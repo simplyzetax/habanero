@@ -3,6 +3,7 @@ import { getClientCredentials } from "./utils/auth";
 import { CloudStorage } from "./utils/cloudstorage";
 import { HOTFIXES } from "./db/schemas/hotfixes";
 import { eq } from "drizzle-orm";
+import { pushHotfixFile } from "./utils/github";
 
 export default {
     async fetch(): Promise<Response> {
@@ -30,6 +31,7 @@ export default {
                                 ...hotfix,
                                 contents,
                             });
+                            await pushHotfixFile("simplyzetax", "habanero", `hotfixes/${hotfix.filename}.ini`, contents);
                         }
                     }
                     break;
