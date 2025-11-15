@@ -1,18 +1,45 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
+import { db } from "./db/client";
+import { getClientCredentials } from "./utils/auth";
+import { CloudStorage } from "./utils/cloudstorage";
+import { HOTFIXES } from "./db/schemas/hotfixes";
+import { eq } from "drizzle-orm";
 
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
-	},
+    async fetch(): Promise<Response> {
+        return new Response("Hello World!");
+    },
+
+    async scheduled(controller): Promise<void> {
+        try {
+            switch (controller.cron) {
+                case "*/30 * * * *": {
+
+                    const accessToken = await getClientCredentials();
+
+                    // I know await in a for loop is not efficient but I like my clean code okay?
+                    // Oh also I do not care about the performance of this
+                    const cloudStorage = new CloudStorage(accessToken);
+                    const hotfixes = await cloudStorage.getHotfixList();
+                    for (const hotfix of hotfixes) {
+                        const [existingHotfix] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256));
+                        if (existingHotfix) continue;
+
+                        const contents = await cloudStorage.getContentsByUniqueFilename(hotfix.uniqueFilename);
+                        if (contents.length !== 0) {
+                            await db.insert(HOTFIXES).values({
+                                ...hotfix,
+                                contents,
+                            });
+                        }
+                    }
+                    break;
+                }
+                default:
+                    console.log(`Unknown cron: ${controller.cron}`);
+            }
+        } catch (error) {
+            console.error("Error in scheduled function:", error);
+            throw error;
+        }
+    },
 } satisfies ExportedHandler<Env>;
