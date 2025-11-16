@@ -71,7 +71,7 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                 .groupBy(HOTFIXES.version)
                 .orderBy(HOTFIXES.version);
 
-            const versionList = versions.map(v => `- [version-${v.version}](./version-${v.version})`).join('\n');
+            const versionList = versions.map(v => `- [version-${v.version}](https://github.com/simplyzetax/habanero/tree/version-${v.version})`).join('\n');
 
             const masterReadme = `# Habanero
 
