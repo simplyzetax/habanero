@@ -2,6 +2,10 @@
 
 Habanero is a Cloudflare Worker that automatically syncs Fortnite hotfixes from the Epic Games API. It runs on a scheduled cron job to fetch the latest hotfix files and stores them in a D1 database and github repository for easy access and version tracking.
 
+## Tracked Versions
+
+- [version-38.10](./version-38.10)
+
 ## Features
 
 - Automated hotfix synchronization via cron triggers
