@@ -134,6 +134,18 @@ export class GitHub {
 
             if (!Array.isArray(data) && data.type === 'file' && 'sha' in data) {
                 sha = data.sha;
+
+                // If the existing README content is identical, avoid creating a new commit.
+                if ("content" in data && typeof data.content === "string" && data.content) {
+                    const existingContent = Buffer.from(
+                        data.content.replace(/\n/g, ""),
+                        "base64"
+                    ).toString();
+
+                    if (existingContent === content) {
+                        return;
+                    }
+                }
             }
         } catch (err: any) {
             if (err.status !== 404) throw err;
