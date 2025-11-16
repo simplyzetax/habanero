@@ -6,10 +6,6 @@ import { eq } from "drizzle-orm";
 import { pushHotfixFile } from "./utils/github";
 
 export default {
-    async fetch(): Promise<Response> {
-        return new Response("Hello World!");
-    },
-
     async scheduled(controller): Promise<void> {
         try {
             switch (controller.cron) {
@@ -19,12 +15,13 @@ export default {
 
                     // I know await in a for loop is not efficient but I like my clean code okay?
                     // Oh also I do not care about the performance of this
+                    // Note: I also do NOT want to deal with D1 variable limit errors
                     const cloudStorage = new CloudStorage(accessToken);
                     const hotfixes = await cloudStorage.getHotfixList();
                     for (const hotfix of hotfixes) {
                         const [existingHotfix] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256));
                         if (existingHotfix) {
-                            console.warn(`Hotfix ${hotfix.filename} already exists in database, skipping...`);
+                            console.warn(`Hotfix ${hotfix.filename} of that version already exists in database, skipping...`);
                             continue;
                         }
 
