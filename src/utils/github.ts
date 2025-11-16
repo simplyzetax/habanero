@@ -6,7 +6,7 @@ const REPO = "habanero";
 export class GitHub {
     constructor(private octokit: Octokit) { }
 
-    async ensureBranch(branchName: string): Promise<void> {
+    async ensureBranch(branchName: string, initialReadmeContent?: string): Promise<void> {
         try {
             await this.octokit.request("GET /repos/{owner}/{repo}/git/ref/heads/{ref}", {
                 owner: OWNER,
@@ -16,23 +16,41 @@ export class GitHub {
             // Branch exists, nothing to do
         } catch (err: any) {
             if (err.status === 404) {
-                // Create an orphan branch (empty branch) by creating a new tree and commit
-                // First, create an empty tree
-                const { data: emptyTree } = await this.octokit.request("POST /repos/{owner}/{repo}/git/trees", {
+                // Create an orphan branch by creating a commit with just the README
+                // GitHub doesn't allow empty trees, so we need at least one file
+                const readmeContent = initialReadmeContent || `Hotfixes for version ${branchName.replace('version-', '')}`;
+
+                // Create a blob for the README
+                const { data: blob } = await this.octokit.request("POST /repos/{owner}/{repo}/git/blobs", {
                     owner: OWNER,
                     repo: REPO,
-                    tree: [],
+                    content: readmeContent,
+                    encoding: 'utf-8',
                 });
 
-                // Create a commit with the empty tree
+                // Create a tree with just the README
+                const { data: tree } = await this.octokit.request("POST /repos/{owner}/{repo}/git/trees", {
+                    owner: OWNER,
+                    repo: REPO,
+                    tree: [
+                        {
+                            path: 'README.md',
+                            mode: '100644',
+                            type: 'blob',
+                            sha: blob.sha,
+                        },
+                    ],
+                });
+
+                // Create a commit with the tree (no parent = orphan branch)
                 const { data: commit } = await this.octokit.request("POST /repos/{owner}/{repo}/git/commits", {
                     owner: OWNER,
                     repo: REPO,
                     message: `Initialize ${branchName} branch`,
-                    tree: emptyTree.sha,
+                    tree: tree.sha,
                 });
 
-                // Create the branch reference pointing to the empty commit
+                // Create the branch reference pointing to the commit
                 await this.octokit.request("POST /repos/{owner}/{repo}/git/refs", {
                     owner: OWNER,
                     repo: REPO,

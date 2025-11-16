@@ -18,15 +18,15 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
         const hotfixes = await step.do('get-hotfix-list', retryConfig, () => CloudStorage.getHotfixList(accessToken));
 
         const branchName = `version-${fortniteVersion.version}`;
+        const versionReadme = `Hotfixes for version ${fortniteVersion.version}`;
 
         await step.do('ensure-version-branch', retryConfig, async () => {
             const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
-            await github.ensureBranch(branchName);
+            await github.ensureBranch(branchName, versionReadme);
         });
 
         await step.do('push-version-readme', retryConfig, async () => {
             const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
-            const versionReadme = `Hotfixes for version ${fortniteVersion.version}`;
             await github.pushReadme(
                 branchName,
                 versionReadme,
