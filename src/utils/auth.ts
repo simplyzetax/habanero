@@ -27,9 +27,12 @@ export async function getClientCredentials(): Promise<string> {
         const cachedToken = client.createToken(JSON.parse(cachedTokenJson));
 
         if (!cachedToken.expired(60) && typeof cachedToken.token.access_token === "string") {
+            console.log("Using cached client credentials");
             return cachedToken.token.access_token;
         }
     }
+
+    console.log("Fetching new client credentials");
 
     const accessToken = await client.getToken({});
     const tokenData = accessToken.token;
@@ -44,5 +47,6 @@ export async function getClientCredentials(): Promise<string> {
         throw new Error("Invalid token response: access_token is not a string");
     }
 
+    console.log("New client credentials fetched");
     return accessTokenString;
 }
