@@ -4,7 +4,7 @@ Habanero is a Cloudflare Worker that automatically syncs Fortnite hotfixes from 
 
 ## Tracked Versions
 
-- [version-38.10](./version-38.10)
+- [version-38.10](https://github.com/simplyzetax/habanero/tree/version-38.10)
 
 ## Features
 
