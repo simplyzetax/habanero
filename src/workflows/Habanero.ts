@@ -25,7 +25,6 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                     const contents = await step.do(`fetch-hotfix-contents-${hotfix.filename}`, retryConfig, () =>
                         CloudStorage.getContentsByUniqueFilename(accessToken, hotfix.uniqueFilename)
                     );
-                    if (!contents) return;
 
                     await step.do(`insert-hotfix-to-db-${hotfix.filename}`, retryConfig, async () => {
                         await db.insert(HOTFIXES).values({ ...hotfix, contents, version: fortniteVersion.version });
@@ -41,6 +40,7 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                                 repo: "habanero",
                                 path: `hotfixes/${hotfix.filename}.ini`,
                             });
+
                             if (!Array.isArray(data) && data.type === 'file' && 'content' in data && data.content) {
                                 sha = data.sha;
                                 const existingContent = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString();
@@ -48,6 +48,7 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                             } else if (!Array.isArray(data)) {
                                 sha = data.sha;
                             }
+
                         } catch (err: any) {
                             if (err.status !== 404) throw err;
                         }
