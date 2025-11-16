@@ -24,7 +24,7 @@ export async function pushHotfixFile(owner: string, repo: string, path: string, 
         repo,
         path,
         message: sha ? `update ${path}` : `create ${path}`,
-        content: btoa(content),
+        content: Buffer.from(content).toString('base64'),
         sha
     });
 }

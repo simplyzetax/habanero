@@ -23,15 +23,21 @@ export default {
                     const hotfixes = await cloudStorage.getHotfixList();
                     for (const hotfix of hotfixes) {
                         const [existingHotfix] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256));
-                        if (existingHotfix) continue;
+                        if (existingHotfix) {
+                            console.warn(`Hotfix ${hotfix.filename} already exists in database, skipping...`);
+                            continue;
+                        }
 
                         const contents = await cloudStorage.getContentsByUniqueFilename(hotfix.uniqueFilename);
                         if (contents.length !== 0) {
+                            console.log(`Inserting hotfix ${hotfix.filename} into database`);
                             await db.insert(HOTFIXES).values({
                                 ...hotfix,
                                 contents,
                             });
+                            console.log(`Pushing hotfix ${hotfix.filename} to GitHub`);
                             await pushHotfixFile("simplyzetax", "habanero", `hotfixes/${hotfix.filename}.ini`, contents);
+                            console.log(`Hotfix ${hotfix.filename} pushed to GitHub`);
                         }
                     }
                     break;
