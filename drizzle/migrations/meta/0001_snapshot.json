@@ -1,0 +1,128 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "3a436cdd-cb3a-4be5-8357-1749fd755e60",
+  "prevId": "4490df04-c269-49e6-b9a8-662173bc94e8",
+  "tables": {
+    "hotfixes": {
+      "name": "hotfixes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "unique_filename": {
+          "name": "unique_filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hash": {
+          "name": "hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hash256": {
+          "name": "hash256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "length": {
+          "name": "length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contents": {
+          "name": "contents",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scraped_at": {
+          "name": "scraped_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'unknown'"
+        }
+      },
+      "indexes": {
+        "idx_hotfixes_unique_filename": {
+          "name": "idx_hotfixes_unique_filename",
+          "columns": [
+            "unique_filename"
+          ],
+          "isUnique": false
+        },
+        "idx_hotfixes_filename": {
+          "name": "idx_hotfixes_filename",
+          "columns": [
+            "filename"
+          ],
+          "isUnique": false
+        },
+        "idx_hotfixes_scraped_at": {
+          "name": "idx_hotfixes_scraped_at",
+          "columns": [
+            "scraped_at"
+          ],
+          "isUnique": false
+        },
+        "idx_hotfixes_contents": {
+          "name": "idx_hotfixes_contents",
+          "columns": [
+            "contents"
+          ],
+          "isUnique": false
+        },
+        "idx_hotfixes_version": {
+          "name": "idx_hotfixes_version",
+          "columns": [
+            "version"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

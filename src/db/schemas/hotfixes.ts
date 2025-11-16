@@ -10,7 +10,7 @@ export const HOTFIXES = sqliteTable("hotfixes", {
     length: integer("length").notNull(),
     contents: text("contents").notNull(),
     scrapedAt: text("scraped_at").notNull().$defaultFn(() => new Date().toISOString()),
-    version: text("version").notNull(),
+    version: text("version").default("unknown"),
 }, (table) => [
     index("idx_hotfixes_unique_filename").on(table.uniqueFilename),
     index("idx_hotfixes_filename").on(table.filename),
