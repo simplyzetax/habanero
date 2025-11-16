@@ -12,6 +12,17 @@ interface ResponseBody {
     validationFailures?: Record<string, object>;
 }
 
+export type WorkflowResult = {
+    success: true;
+    filename: string;
+    version: string;
+    reason?: string;
+} | {
+    success: false;
+    reason: string;
+};
+
+
 export class ApiError {
     statusCode: number;
     public response: ResponseBody;
@@ -72,6 +83,13 @@ export class ApiError {
         });
     }
 
+    toWorkflowResult(): WorkflowResult {
+        return {
+            success: false,
+            reason: this.getMessage(),
+        } satisfies WorkflowResult;
+    }
+
     throwHttpException(): never {
         const errorResponse = new Response(JSON.stringify(this.response), {
             status: this.statusCode,
@@ -98,6 +116,11 @@ export const errors = {
     internalServerError: new ApiError('errors.tailflare.internalServerError', 'Internal server error', 1008, 500),
     badGateway: new ApiError('errors.tailflare.badGateway', 'Bad gateway', 1010, 502),
     serviceUnavailable: new ApiError('errors.tailflare.serviceUnavailable', 'Service unavailable', 1011, 503),
+
+    workflow: {
+        alreadyExistsInDatabase: new ApiError('errors.workflow.alreadyExistsInDatabase', 'Already exists in database', 2001, 400),
+        alreadyExistsInGitHub: new ApiError('errors.workflow.alreadyExistsInGitHub', 'Already exists in GitHub', 2002, 400),
+    },
 
     // Utility function for custom errors
     customError(code: string, message: string, numericErrorCode: number, status: number) {

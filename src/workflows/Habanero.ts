@@ -6,6 +6,7 @@ import { fortniteVersionRequest } from "../utils/epicgames";
 import { drizzle } from "drizzle-orm/d1";
 import { Octokit } from "@octokit/core";
 import { getClientCredentials } from "../utils/auth";
+import { errors, WorkflowResult } from "../utils/errors";
 
 const retryConfig = { retries: { limit: 3, delay: '3 second' as const, backoff: 'exponential' as const } };
 
@@ -20,7 +21,7 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                 await step.do(`process-hotfix-${hotfix.filename}`, retryConfig, async () => {
                     const db = drizzle(this.env.D1);
                     const [existing] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256)).limit(1);
-                    if (existing) return;
+                    if (existing) return errors.workflow.alreadyExistsInDatabase.toWorkflowResult();
 
                     const contents = await step.do(`fetch-hotfix-contents-${hotfix.filename}`, retryConfig, () =>
                         CloudStorage.getContentsByUniqueFilename(accessToken, hotfix.uniqueFilename)
@@ -44,7 +45,7 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                             if (!Array.isArray(data) && data.type === 'file' && 'content' in data && data.content) {
                                 sha = data.sha;
                                 const existingContent = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString();
-                                if (existingContent === contents) return;
+                                if (existingContent === contents) return errors.workflow.alreadyExistsInGitHub.toWorkflowResult();
                             } else if (!Array.isArray(data)) {
                                 sha = data.sha;
                             }
@@ -61,6 +62,8 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                             content: Buffer.from(contents).toString('base64'),
                             sha,
                         });
+
+                        return { success: true, filename: hotfix.filename, version: fortniteVersion.version } satisfies WorkflowResult;
                     });
                 });
             }
