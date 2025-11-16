@@ -3,7 +3,19 @@ import { env } from 'cloudflare:workers';
 
 const octokit = new Octokit({ auth: env.GITHUB_API_TOKEN });
 
-export async function pushHotfixFile(owner: string, repo: string, path: string, content: string) {
+export async function pushHotfixFile({
+    owner,
+    repo,
+    path,
+    content,
+    message,
+}: {
+    owner: string;
+    repo: string;
+    path: string;
+    content: string;
+    message: string;
+}) {
     let sha: string | undefined;
 
     // Try to get the existing file SHA
@@ -23,7 +35,7 @@ export async function pushHotfixFile(owner: string, repo: string, path: string, 
         owner,
         repo,
         path,
-        message: sha ? `update ${path}` : `create ${path}`,
+        message,
         content: Buffer.from(content).toString('base64'),
         sha
     });

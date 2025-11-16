@@ -10,11 +10,13 @@ export const HOTFIXES = sqliteTable("hotfixes", {
     length: integer("length").notNull(),
     contents: text("contents").notNull(),
     scrapedAt: text("scraped_at").notNull().$defaultFn(() => new Date().toISOString()),
+    version: text("version").notNull(),
 }, (table) => [
     index("idx_hotfixes_unique_filename").on(table.uniqueFilename),
     index("idx_hotfixes_filename").on(table.filename),
     index("idx_hotfixes_scraped_at").on(table.scrapedAt),
     index("idx_hotfixes_contents").on(table.contents),
+    index("idx_hotfixes_version").on(table.version),
 ]);
 
 export type NewHotfix = typeof HOTFIXES.$inferInsert;

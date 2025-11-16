@@ -4,14 +4,15 @@ import { CloudStorage } from "./utils/cloudstorage";
 import { HOTFIXES } from "./db/schemas/hotfixes";
 import { eq } from "drizzle-orm";
 import { pushHotfixFile } from "./utils/github";
+import { fortniteVersionRequest } from "./utils/epicgames";
 
 export default {
     async scheduled(controller): Promise<void> {
         try {
             switch (controller.cron) {
                 case "*/30 * * * *": {
-
                     const accessToken = await getClientCredentials();
+                    const fortniteVersion = await fortniteVersionRequest(accessToken);
 
                     // I know await in a for loop is not efficient but I like my clean code okay?
                     // Oh also I do not care about the performance of this
@@ -31,9 +32,16 @@ export default {
                             await db.insert(HOTFIXES).values({
                                 ...hotfix,
                                 contents,
+                                version: fortniteVersion.version,
                             });
                             console.log(`Pushing hotfix ${hotfix.filename} to GitHub`);
-                            await pushHotfixFile("simplyzetax", "habanero", `hotfixes/${hotfix.filename}.ini`, contents);
+                            await pushHotfixFile({
+                                owner: "simplyzetax",
+                                repo: "habanero",
+                                path: `hotfixes/${hotfix.filename}.ini`,
+                                content: contents,
+                                message: `Update hotfix ${hotfix.filename} for version ${fortniteVersion.version}`,
+                            });
                             console.log(`Hotfix ${hotfix.filename} pushed to GitHub`);
                         }
                     }
