@@ -3,29 +3,15 @@ import { insertHotfixSchema, NewHotfix } from "../db/schemas/hotfixes";
 import { z } from "zod";
 
 export class CloudStorage {
-    constructor(public readonly accessToken: string) {
-    }
-    public async getHotfixList(): Promise<z.infer<typeof insertHotfixSchema>[]> {
+    static async getHotfixList(accessToken: string): Promise<z.infer<typeof insertHotfixSchema>[]> {
         const response = await fetch("https://fngw-mcp-gc-livefn.ol.epicgames.com/fortnite/api/cloudstorage/system", {
             headers: {
-                "Authorization": `Bearer ${this.accessToken}`,
+                "Authorization": `Bearer ${accessToken}`,
             },
         });
 
         if (!response.ok) {
-            switch (response.status) {
-                case 401:
-                    throw errors.unauthorized.withMessage("Invalid or expired access token");
-                case 502:
-                case 503:
-                    throw errors.badGateway.withMessage("Fortnite cloud storage API is unavailable");
-                default:
-                    if (response.status >= 500) {
-                        throw errors.serviceUnavailable.withMessage("Fortnite cloud storage service error");
-                    } else {
-                        throw errors.badRequest.withMessage(`Failed to fetch cloud storage: ${response.statusText}`);
-                    }
-            }
+            throw errors.badRequest.withMessage(`Failed to fetch cloud storage data: ${response.statusText}`);
         }
 
         const data = await response.json();
@@ -38,10 +24,10 @@ export class CloudStorage {
         return parsedData.data;
     }
 
-    public async getContentsByUniqueFilename(uniqueFilename: string): Promise<string> {
+    static async getContentsByUniqueFilename(accessToken: string, uniqueFilename: string): Promise<string> {
         const response = await fetch(`https://fngw-mcp-gc-livefn.ol.epicgames.com/fortnite/api/cloudstorage/system/${uniqueFilename}`, {
             headers: {
-                "Authorization": `Bearer ${this.accessToken}`,
+                "Authorization": `Bearer ${accessToken}`,
             },
         });
 
