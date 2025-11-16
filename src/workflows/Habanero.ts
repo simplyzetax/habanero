@@ -1,12 +1,13 @@
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import { CloudStorage } from "../utils/cloudstorage";
 import { HOTFIXES } from "../db/schemas/hotfixes";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { fortniteVersionRequest } from "../utils/epicgames";
 import { drizzle } from "drizzle-orm/d1";
 import { Octokit } from "@octokit/core";
 import { getClientCredentials } from "../utils/auth";
 import { errors, WorkflowResult } from "../utils/errors";
+import { GitHub } from "../utils/github";
 
 const retryConfig = { retries: { limit: 3, delay: '3 second' as const, backoff: 'exponential' as const } };
 
@@ -19,37 +20,18 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
         const branchName = `version-${fortniteVersion.version}`;
 
         await step.do('ensure-version-branch', retryConfig, async () => {
-            const octokit = new Octokit({ auth: this.env.GITHUB_API_TOKEN });
+            const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
+            await github.ensureBranch(branchName);
+        });
 
-            try {
-                await octokit.request("GET /repos/{owner}/{repo}/git/ref/heads/{ref}", {
-                    owner: "simplyzetax",
-                    repo: "habanero",
-                    ref: branchName,
-                });
-            } catch (err: any) {
-                if (err.status === 404) {
-                    const { data: defaultBranch } = await octokit.request("GET /repos/{owner}/{repo}", {
-                        owner: "simplyzetax",
-                        repo: "habanero",
-                    });
-
-                    const { data: refData } = await octokit.request("GET /repos/{owner}/{repo}/git/ref/heads/{ref}", {
-                        owner: "simplyzetax",
-                        repo: "habanero",
-                        ref: defaultBranch.default_branch,
-                    });
-
-                    await octokit.request("POST /repos/{owner}/{repo}/git/refs", {
-                        owner: "simplyzetax",
-                        repo: "habanero",
-                        ref: `refs/heads/${branchName}`,
-                        sha: refData.object.sha,
-                    });
-                } else {
-                    throw err;
-                }
-            }
+        await step.do('push-version-readme', retryConfig, async () => {
+            const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
+            const versionReadme = `Hotfixes for version ${fortniteVersion.version}`;
+            await github.pushReadme(
+                branchName,
+                versionReadme,
+                `Update README for version ${fortniteVersion.version}`
+            );
         });
 
         await step.do('process-all-hotfixes', retryConfig, async () => {
@@ -68,55 +50,98 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                     });
 
                     await step.do(`push-hotfix-to-github-${hotfix.filename}`, retryConfig, async () => {
-                        const octokit = new Octokit({ auth: this.env.GITHUB_API_TOKEN });
-                        const path = `hotfixes/${hotfix.filename}.ini`;
-                        const message = `Update hotfix ${hotfix.filename} for version ${fortniteVersion.version}`;
-                        const content = Buffer.from(contents).toString('base64');
-
-                        const pushToBranch = async (branch: string) => {
-                            let sha: string | undefined;
-
-                            try {
-                                const { data } = await octokit.request("GET /repos/{owner}/{repo}/contents/{path}", {
-                                    owner: "simplyzetax",
-                                    repo: "habanero",
-                                    path,
-                                    ref: branch,
-                                });
-
-                                if (!Array.isArray(data) && data.type === 'file' && 'content' in data && data.content) {
-                                    sha = data.sha;
-                                    const existingContent = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString();
-                                    if (existingContent === contents) {
-                                        return { skipped: true, branch, filename: hotfix.filename };
-                                    }
-                                } else if (!Array.isArray(data)) {
-                                    sha = data.sha;
-                                }
-                            } catch (err: any) {
-                                if (err.status !== 404) throw err;
-                            }
-
-                            await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
-                                owner: "simplyzetax",
-                                repo: "habanero",
-                                path,
-                                message,
-                                content,
-                                sha,
-                                branch,
-                            });
-
-                            return { success: true, branch, filename: hotfix.filename };
-                        };
-
-                        await pushToBranch(branchName);
-                        await pushToBranch('master');
-
-                        return { success: true, filename: hotfix.filename, version: fortniteVersion.version } satisfies WorkflowResult;
+                        const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
+                        return await github.pushHotfixToBranches(
+                            hotfix.filename,
+                            contents,
+                            fortniteVersion.version,
+                            [branchName, 'master']
+                        ) satisfies WorkflowResult;
                     });
                 });
             }
+        });
+
+        await step.do('update-master-readme', retryConfig, async () => {
+            const db = drizzle(this.env.D1);
+            const versions = await db
+                .select({ version: HOTFIXES.version })
+                .from(HOTFIXES)
+                .where(sql`${HOTFIXES.version} IS NOT NULL AND ${HOTFIXES.version} != 'unknown'`)
+                .groupBy(HOTFIXES.version)
+                .orderBy(HOTFIXES.version);
+
+            const versionList = versions.map(v => `- [version-${v.version}](./version-${v.version})`).join('\n');
+
+            const masterReadme = `# Habanero
+
+Habanero is a Cloudflare Worker that automatically syncs Fortnite hotfixes from the Epic Games API. It runs on a scheduled cron job to fetch the latest hotfix files and stores them in a D1 database and github repository for easy access and version tracking.
+
+## Tracked Versions
+
+${versionList}
+
+## Features
+
+- Automated hotfix synchronization via cron triggers
+- Stores hotfix metadata and contents in D1 database
+- Handles authentication with Epic Games API
+- Batch processing to handle large datasets efficiently
+- Conflict resolution for duplicate entries
+
+## Architecture
+
+- **Cloudflare Workers**: Serverless runtime for scheduled tasks
+- **D1 Database**: SQLite database for storing hotfix data
+- **Drizzle ORM**: Type-safe database queries and migrations
+- **Workflows**: Long-running processes using Cloudflare Durable Objects
+
+## Development
+
+### Prerequisites
+
+- Node.js 18 or later
+- pnpm package manager
+- Cloudflare account with Workers and D1 enabled
+
+### Setup
+
+1. Install dependencies:
+   \`\`\`bash
+   pnpm install
+   \`\`\`
+
+2. Configure your Cloudflare bindings in \`wrangler.jsonc\`:
+   - KV namespace for caching credentials
+   - D1 database for hotfix storage
+   - Workflow bindings
+
+3. Run database migrations:
+   \`\`\`bash
+   pnpm drizzle-kit migrate
+   \`\`\`
+
+4. Start the development server:
+   \`\`\`bash
+   pnpm dev
+   \`\`\`
+
+### Deployment
+
+Deploy to Cloudflare Workers:
+\`\`\`bash
+pnpm run deploy
+\`\`\`
+## Cron Schedule
+
+The worker runs on a 30-minute interval (\`*/30 * * * *\`) to check for new hotfixes and sync them to the database and git repository.`;
+
+            const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
+            await github.pushReadme(
+                'master',
+                masterReadme,
+                `Update README with tracked versions`
+            );
         });
     }
 }
