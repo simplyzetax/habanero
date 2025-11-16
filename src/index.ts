@@ -1,58 +1,8 @@
-import { db } from "./db/client";
-import { getClientCredentials } from "./utils/auth";
-import { CloudStorage } from "./utils/cloudstorage";
-import { HOTFIXES } from "./db/schemas/hotfixes";
-import { eq } from "drizzle-orm";
-import { pushHotfixFile } from "./utils/github";
-import { fortniteVersionRequest } from "./utils/epicgames";
-
 export default {
-    async scheduled(controller): Promise<void> {
-        try {
-            switch (controller.cron) {
-                case "*/30 * * * *": {
-                    const accessToken = await getClientCredentials();
-                    const fortniteVersion = await fortniteVersionRequest(accessToken);
-
-                    // I know await in a for loop is not efficient but I like my clean code okay?
-                    // Oh also I do not care about the performance of this
-                    // Note: I also do NOT want to deal with D1 variable limit errors
-                    const cloudStorage = new CloudStorage(accessToken);
-                    const hotfixes = await cloudStorage.getHotfixList();
-                    for (const hotfix of hotfixes) {
-                        const [existingHotfix] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256));
-                        if (existingHotfix) {
-                            console.warn(`Hotfix ${hotfix.filename} of that version already exists in database, skipping...`);
-                            continue;
-                        }
-
-                        const contents = await cloudStorage.getContentsByUniqueFilename(hotfix.uniqueFilename);
-                        if (contents.length !== 0) {
-                            console.log(`Inserting hotfix ${hotfix.filename} into database`);
-                            await db.insert(HOTFIXES).values({
-                                ...hotfix,
-                                contents,
-                                version: fortniteVersion.version,
-                            });
-                            console.log(`Pushing hotfix ${hotfix.filename} to GitHub`);
-                            await pushHotfixFile({
-                                owner: "simplyzetax",
-                                repo: "habanero",
-                                path: `hotfixes/${hotfix.filename}.ini`,
-                                content: contents,
-                                message: `Update hotfix ${hotfix.filename} for version ${fortniteVersion.version}`,
-                            });
-                            console.log(`Hotfix ${hotfix.filename} pushed to GitHub`);
-                        }
-                    }
-                    break;
-                }
-                default:
-                    console.log(`Unknown cron: ${controller.cron}`);
-            }
-        } catch (error) {
-            console.error("Error in scheduled function:", error);
-            throw error;
-        }
+    async scheduled(controller, env, ctx): Promise<void> {
+        const workflowRun = await env.HABANERO.create();
+        console.log(`Started workflow run: ${workflowRun.id}`);
     },
 } satisfies ExportedHandler<Env>;
+
+export { HabaneroWorkflow } from "./workflows/Habanero";
