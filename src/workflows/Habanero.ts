@@ -69,36 +69,49 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
 
                     await step.do(`push-hotfix-to-github-${hotfix.filename}`, retryConfig, async () => {
                         const octokit = new Octokit({ auth: this.env.GITHUB_API_TOKEN });
-                        let sha: string | undefined;
+                        const path = `hotfixes/${hotfix.filename}.ini`;
+                        const message = `Update hotfix ${hotfix.filename} for version ${fortniteVersion.version}`;
+                        const content = Buffer.from(contents).toString('base64');
 
-                        try {
-                            const { data } = await octokit.request("GET /repos/{owner}/{repo}/contents/{path}", {
+                        const pushToBranch = async (branch: string) => {
+                            let sha: string | undefined;
+
+                            try {
+                                const { data } = await octokit.request("GET /repos/{owner}/{repo}/contents/{path}", {
+                                    owner: "simplyzetax",
+                                    repo: "habanero",
+                                    path,
+                                    ref: branch,
+                                });
+
+                                if (!Array.isArray(data) && data.type === 'file' && 'content' in data && data.content) {
+                                    sha = data.sha;
+                                    const existingContent = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString();
+                                    if (existingContent === contents) {
+                                        return { skipped: true, branch, filename: hotfix.filename };
+                                    }
+                                } else if (!Array.isArray(data)) {
+                                    sha = data.sha;
+                                }
+                            } catch (err: any) {
+                                if (err.status !== 404) throw err;
+                            }
+
+                            await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
                                 owner: "simplyzetax",
                                 repo: "habanero",
-                                path: `hotfixes/${hotfix.filename}.ini`,
-                                ref: branchName,
+                                path,
+                                message,
+                                content,
+                                sha,
+                                branch,
                             });
 
-                            if (!Array.isArray(data) && data.type === 'file' && 'content' in data && data.content) {
-                                sha = data.sha;
-                                const existingContent = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString();
-                                if (existingContent === contents) return errors.workflow.alreadyExistsInGitHub.toWorkflowResult();
-                            } else if (!Array.isArray(data)) {
-                                sha = data.sha;
-                            }
-                        } catch (err: any) {
-                            if (err.status !== 404) throw err;
-                        }
+                            return { success: true, branch, filename: hotfix.filename };
+                        };
 
-                        await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
-                            owner: "simplyzetax",
-                            repo: "habanero",
-                            path: `hotfixes/${hotfix.filename}.ini`,
-                            message: `Update hotfix ${hotfix.filename} for version ${fortniteVersion.version}`,
-                            content: Buffer.from(contents).toString('base64'),
-                            sha,
-                            branch: branchName,
-                        });
+                        await pushToBranch(branchName);
+                        await pushToBranch('master');
 
                         return { success: true, filename: hotfix.filename, version: fortniteVersion.version } satisfies WorkflowResult;
                     });
