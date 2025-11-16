@@ -16,6 +16,42 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
         const fortniteVersion = await step.do('get-fortnite-version', retryConfig, () => fortniteVersionRequest(accessToken));
         const hotfixes = await step.do('get-hotfix-list', retryConfig, () => CloudStorage.getHotfixList(accessToken));
 
+        const branchName = `version-${fortniteVersion.version}`;
+
+        await step.do('ensure-version-branch', retryConfig, async () => {
+            const octokit = new Octokit({ auth: this.env.GITHUB_API_TOKEN });
+
+            try {
+                await octokit.request("GET /repos/{owner}/{repo}/git/ref/heads/{ref}", {
+                    owner: "simplyzetax",
+                    repo: "habanero",
+                    ref: branchName,
+                });
+            } catch (err: any) {
+                if (err.status === 404) {
+                    const { data: defaultBranch } = await octokit.request("GET /repos/{owner}/{repo}", {
+                        owner: "simplyzetax",
+                        repo: "habanero",
+                    });
+
+                    const { data: refData } = await octokit.request("GET /repos/{owner}/{repo}/git/ref/heads/{ref}", {
+                        owner: "simplyzetax",
+                        repo: "habanero",
+                        ref: defaultBranch.default_branch,
+                    });
+
+                    await octokit.request("POST /repos/{owner}/{repo}/git/refs", {
+                        owner: "simplyzetax",
+                        repo: "habanero",
+                        ref: `refs/heads/${branchName}`,
+                        sha: refData.object.sha,
+                    });
+                } else {
+                    throw err;
+                }
+            }
+        });
+
         await step.do('process-all-hotfixes', retryConfig, async () => {
             for (const hotfix of hotfixes) {
                 await step.do(`process-hotfix-${hotfix.filename}`, retryConfig, async () => {
@@ -40,6 +76,7 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                                 owner: "simplyzetax",
                                 repo: "habanero",
                                 path: `hotfixes/${hotfix.filename}.ini`,
+                                ref: branchName,
                             });
 
                             if (!Array.isArray(data) && data.type === 'file' && 'content' in data && data.content) {
@@ -49,7 +86,6 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                             } else if (!Array.isArray(data)) {
                                 sha = data.sha;
                             }
-
                         } catch (err: any) {
                             if (err.status !== 404) throw err;
                         }
@@ -61,6 +97,7 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
                             message: `Update hotfix ${hotfix.filename} for version ${fortniteVersion.version}`,
                             content: Buffer.from(contents).toString('base64'),
                             sha,
+                            branch: branchName,
                         });
 
                         return { success: true, filename: hotfix.filename, version: fortniteVersion.version } satisfies WorkflowResult;
