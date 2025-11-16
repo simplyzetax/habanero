@@ -34,33 +34,33 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
             );
         });
 
-        await step.do('process-all-hotfixes', retryConfig, async () => {
+        const newHotfixes = await step.do('process-all-hotfixes', retryConfig, async () => {
+            const db = drizzle(this.env.D1);
+            const hotfixesToPush: Array<{ filename: string; contents: string }> = [];
+
             for (const hotfix of hotfixes) {
-                await step.do(`process-hotfix-${hotfix.filename}`, retryConfig, async () => {
-                    const db = drizzle(this.env.D1);
-                    const [existing] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256)).limit(1);
-                    if (existing) return errors.workflow.alreadyExistsInDatabase.toWorkflowResult();
+                const [existing] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256)).limit(1);
+                if (existing) continue;
 
-                    const contents = await step.do(`fetch-hotfix-contents-${hotfix.filename}`, retryConfig, () =>
-                        CloudStorage.getContentsByUniqueFilename(accessToken, hotfix.uniqueFilename)
-                    );
+                const contents = await CloudStorage.getContentsByUniqueFilename(accessToken, hotfix.uniqueFilename);
+                await db.insert(HOTFIXES).values({ ...hotfix, contents, version: fortniteVersion.version });
 
-                    await step.do(`insert-hotfix-to-db-${hotfix.filename}`, retryConfig, async () => {
-                        await db.insert(HOTFIXES).values({ ...hotfix, contents, version: fortniteVersion.version });
-                    });
-
-                    await step.do(`push-hotfix-to-github-${hotfix.filename}`, retryConfig, async () => {
-                        const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
-                        return await github.pushHotfixToBranches(
-                            hotfix.filename,
-                            contents,
-                            fortniteVersion.version,
-                            [branchName, 'master']
-                        ) satisfies WorkflowResult;
-                    });
-                });
+                hotfixesToPush.push({ filename: hotfix.filename, contents });
             }
+
+            return hotfixesToPush;
         });
+
+        if (newHotfixes.length > 0) {
+            await step.do('push-all-hotfixes-to-github', retryConfig, async () => {
+                const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
+                await github.pushMultipleHotfixesToBranches(
+                    newHotfixes,
+                    fortniteVersion.version,
+                    [branchName, 'master']
+                );
+            });
+        }
 
         await step.do('update-master-readme', retryConfig, async () => {
             const db = drizzle(this.env.D1);

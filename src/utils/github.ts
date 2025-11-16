@@ -121,6 +121,161 @@ export class GitHub {
         return { success: true, filename, version };
     }
 
+    async pushMultipleHotfixesToBranches(
+        hotfixes: Array<{ filename: string; contents: string }>,
+        version: string,
+        branches: string[]
+    ): Promise<{ success: true; count: number; version: string }> {
+        const files = hotfixes.map(h => ({
+            path: `hotfixes/${h.filename}.ini`,
+            content: h.contents,
+        }));
+
+        const message = `Update ${hotfixes.length} hotfix${hotfixes.length > 1 ? 'es' : ''} for version ${version}`;
+
+        for (const branch of branches) {
+            await this.pushMultipleFiles(files, message, branch);
+        }
+
+        return { success: true, count: hotfixes.length, version };
+    }
+
+    async pushMultipleFiles(
+        files: Array<{ path: string; content: string }>,
+        message: string,
+        branch: string
+    ): Promise<void> {
+        // Get the current commit SHA for the branch
+        const { data: refData } = await this.octokit.request("GET /repos/{owner}/{repo}/git/ref/heads/{ref}", {
+            owner: OWNER,
+            repo: REPO,
+            ref: branch,
+        });
+
+        const currentCommitSha = refData.object.sha;
+
+        // Get the current tree
+        const { data: currentCommit } = await this.octokit.request("GET /repos/{owner}/{repo}/git/commits/{commit_sha}", {
+            owner: OWNER,
+            repo: REPO,
+            commit_sha: currentCommitSha,
+        });
+
+        const { data: currentTree } = await this.octokit.request("GET /repos/{owner}/{repo}/git/trees/{tree_sha}", {
+            owner: OWNER,
+            repo: REPO,
+            tree_sha: currentCommit.tree.sha,
+            recursive: 'true',
+        });
+
+        // Create a map of existing files for quick lookup
+        const existingFiles = new Map<string, { sha: string; mode: string; type: string }>();
+        if (currentTree.tree && Array.isArray(currentTree.tree)) {
+            for (const item of currentTree.tree) {
+                if (item.type === 'blob' && item.path) {
+                    existingFiles.set(item.path, { sha: item.sha, mode: item.mode || '100644', type: item.type });
+                }
+            }
+        }
+
+        // Create blobs for all files
+        const treeEntries: Array<{ path: string; mode: '100644' | '100755' | '040000' | '160000' | '120000'; type: 'blob' | 'tree' | 'commit'; sha: string }> = [];
+
+        for (const file of files) {
+            // Check if file exists and content is the same
+            const existing = existingFiles.get(file.path);
+            if (existing) {
+                // Get the blob content to compare
+                try {
+                    const { data: blob } = await this.octokit.request("GET /repos/{owner}/{repo}/git/blobs/{file_sha}", {
+                        owner: OWNER,
+                        repo: REPO,
+                        file_sha: existing.sha,
+                    });
+
+                    const existingContent = Buffer.from(blob.content, blob.encoding === 'base64' ? 'base64' : 'utf-8').toString();
+                    if (existingContent === file.content) {
+                        // Content is the same, keep existing blob
+                        treeEntries.push({
+                            path: file.path,
+                            mode: (existing.mode || '100644') as '100644' | '100755' | '040000' | '160000' | '120000',
+                            type: existing.type as 'blob' | 'tree' | 'commit',
+                            sha: existing.sha,
+                        });
+                        continue;
+                    }
+                } catch (err) {
+                    // If we can't get the blob, create a new one
+                }
+            }
+
+            // Create a new blob for the file
+            const { data: blob } = await this.octokit.request("POST /repos/{owner}/{repo}/git/blobs", {
+                owner: OWNER,
+                repo: REPO,
+                content: file.content,
+                encoding: 'utf-8',
+            });
+
+            treeEntries.push({
+                path: file.path,
+                mode: '100644',
+                type: 'blob',
+                sha: blob.sha,
+            });
+        }
+
+        // Preserve existing files that aren't being updated
+        if (currentTree.tree && Array.isArray(currentTree.tree)) {
+            for (const item of currentTree.tree) {
+                if (item.type === 'blob' && item.path) {
+                    // Only preserve if we're not updating this file
+                    if (!files.some(f => f.path === item.path)) {
+                        treeEntries.push({
+                            path: item.path,
+                            mode: (item.mode || '100644') as '100644' | '100755' | '040000' | '160000' | '120000',
+                            type: item.type as 'blob' | 'tree' | 'commit',
+                            sha: item.sha,
+                        });
+                    }
+                } else if (item.type === 'tree') {
+                    // Preserve directories
+                    treeEntries.push({
+                        path: item.path!,
+                        mode: (item.mode || '040000') as '100644' | '100755' | '040000' | '160000' | '120000',
+                        type: item.type as 'blob' | 'tree' | 'commit',
+                        sha: item.sha,
+                    });
+                }
+            }
+        }
+
+        // Create a new tree with all files
+        const { data: newTree } = await this.octokit.request("POST /repos/{owner}/{repo}/git/trees", {
+            owner: OWNER,
+            repo: REPO,
+            tree: treeEntries,
+            base_tree: currentCommit.tree.sha,
+        });
+
+        // Create a new commit
+        const { data: newCommit } = await this.octokit.request("POST /repos/{owner}/{repo}/git/commits", {
+            owner: OWNER,
+            repo: REPO,
+            message,
+            tree: newTree.sha,
+            parents: [currentCommitSha],
+        });
+
+        // Update the branch reference
+        await this.octokit.request("PATCH /repos/{owner}/{repo}/git/refs/heads/{ref}", {
+            owner: OWNER,
+            repo: REPO,
+            ref: branch,
+            sha: newCommit.sha,
+        });
+    }
+
     async pushReadme(branch: string, content: string, message: string): Promise<void> {
         let sha: string | undefined;
 
