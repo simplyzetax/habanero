@@ -8,6 +8,7 @@ import { Octokit } from "@octokit/core";
 import { getClientCredentials } from "../utils/auth";
 import { errors, WorkflowResult } from "../utils/errors";
 import { GitHub } from "../utils/github";
+import { db } from "../db/client";
 
 const retryConfig = { retries: { limit: 3, delay: '3 second' as const, backoff: 'exponential' as const } };
 
@@ -18,15 +19,15 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
         const hotfixes = await step.do('get-hotfix-list', retryConfig, () => CloudStorage.getHotfixList(accessToken));
 
         const branchName = `version-${fortniteVersion.version}`;
-        const versionReadme = `Hotfixes for version ${fortniteVersion.version}`;
 
         await step.do('ensure-version-branch', retryConfig, async () => {
             const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
-            await github.ensureBranch(branchName, versionReadme);
+            await github.ensureBranch(branchName);
         });
 
         await step.do('push-version-readme', retryConfig, async () => {
             const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
+            const versionReadme = `Hotfixes for version ${fortniteVersion.version}`;
             await github.pushReadme(
                 branchName,
                 versionReadme,
@@ -34,33 +35,32 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
             );
         });
 
-        const newHotfixes = await step.do('process-all-hotfixes', retryConfig, async () => {
-            const db = drizzle(this.env.D1);
-            const hotfixesToPush: Array<{ filename: string; contents: string }> = [];
-
+        await step.do('process-all-hotfixes', retryConfig, async () => {
             for (const hotfix of hotfixes) {
-                const [existing] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256)).limit(1);
-                if (existing) continue;
+                await step.do(`process-hotfix-${hotfix.filename}`, retryConfig, async () => {
+                    const [existing] = await db.select().from(HOTFIXES).where(eq(HOTFIXES.hash256, hotfix.hash256)).limit(1);
+                    if (existing) return errors.workflow.alreadyExistsInDatabase.toWorkflowResult();
 
-                const contents = await CloudStorage.getContentsByUniqueFilename(accessToken, hotfix.uniqueFilename);
-                await db.insert(HOTFIXES).values({ ...hotfix, contents, version: fortniteVersion.version });
+                    const contents = await step.do(`fetch-hotfix-contents-${hotfix.filename}`, retryConfig, () =>
+                        CloudStorage.getContentsByUniqueFilename(accessToken, hotfix.uniqueFilename)
+                    );
 
-                hotfixesToPush.push({ filename: hotfix.filename, contents });
+                    await step.do(`insert-hotfix-to-db-${hotfix.filename}`, retryConfig, async () => {
+                        await db.insert(HOTFIXES).values({ ...hotfix, contents, version: fortniteVersion.version });
+                    });
+
+                    await step.do(`push-hotfix-to-github-${hotfix.filename}`, retryConfig, async () => {
+                        const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
+                        return await github.pushHotfixToBranches(
+                            hotfix.filename,
+                            contents,
+                            fortniteVersion.version,
+                            [branchName, 'master']
+                        ) satisfies WorkflowResult;
+                    });
+                });
             }
-
-            return hotfixesToPush;
         });
-
-        if (newHotfixes.length > 0) {
-            await step.do('push-all-hotfixes-to-github', retryConfig, async () => {
-                const github = new GitHub(new Octokit({ auth: this.env.GITHUB_API_TOKEN }));
-                await github.pushMultipleHotfixesToBranches(
-                    newHotfixes,
-                    fortniteVersion.version,
-                    [branchName, 'master']
-                );
-            });
-        }
 
         await step.do('update-master-readme', retryConfig, async () => {
             const db = drizzle(this.env.D1);
