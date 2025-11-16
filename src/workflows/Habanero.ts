@@ -44,10 +44,7 @@ export class HabaneroWorkflow extends WorkflowEntrypoint<Env> {
             },
         );
 
-        const cloudstorage = await step.do(
-            'get-cloudstorage',
-            async () => new CloudStorage(accessToken),
-        );
+        const cloudstorage = new CloudStorage(accessToken);
 
         const fortniteVersion = await step.do(
             'get-fortnite-version',
