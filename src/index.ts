@@ -9,7 +9,7 @@ export default {
     async scheduled(controller): Promise<void> {
         try {
             switch (controller.cron) {
-                case "0 0 * * *": {
+                case "*/30 * * * *": {
 
                     const accessToken = await getClientCredentials();
 
