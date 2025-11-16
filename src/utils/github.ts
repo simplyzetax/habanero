@@ -4,7 +4,7 @@ const OWNER = "simplyzetax";
 const REPO = "habanero";
 
 export class GitHub {
-    constructor(private octokit: Octokit) {}
+    constructor(private octokit: Octokit) { }
 
     async ensureBranch(branchName: string): Promise<void> {
         try {
@@ -13,24 +13,31 @@ export class GitHub {
                 repo: REPO,
                 ref: branchName,
             });
+            // Branch exists, nothing to do
         } catch (err: any) {
             if (err.status === 404) {
-                const { data: defaultBranch } = await this.octokit.request("GET /repos/{owner}/{repo}", {
+                // Create an orphan branch (empty branch) by creating a new tree and commit
+                // First, create an empty tree
+                const { data: emptyTree } = await this.octokit.request("POST /repos/{owner}/{repo}/git/trees", {
                     owner: OWNER,
                     repo: REPO,
+                    tree: [],
                 });
 
-                const { data: refData } = await this.octokit.request("GET /repos/{owner}/{repo}/git/ref/heads/{ref}", {
+                // Create a commit with the empty tree
+                const { data: commit } = await this.octokit.request("POST /repos/{owner}/{repo}/git/commits", {
                     owner: OWNER,
                     repo: REPO,
-                    ref: defaultBranch.default_branch,
+                    message: `Initialize ${branchName} branch`,
+                    tree: emptyTree.sha,
                 });
 
+                // Create the branch reference pointing to the empty commit
                 await this.octokit.request("POST /repos/{owner}/{repo}/git/refs", {
                     owner: OWNER,
                     repo: REPO,
                     ref: `refs/heads/${branchName}`,
-                    sha: refData.object.sha,
+                    sha: commit.sha,
                 });
             } else {
                 throw err;
