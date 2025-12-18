@@ -10,6 +10,7 @@ The master branch is the default branch and contains the latest version of the h
 - [version-38.11](https://github.com/simplyzetax/habanero/tree/version-38.11)
 - [version-39.00](https://github.com/simplyzetax/habanero/tree/version-39.00)
 - [version-39.10](https://github.com/simplyzetax/habanero/tree/version-39.10)
+- [version-39.11](https://github.com/simplyzetax/habanero/tree/version-39.11)
 
 ## Features
 
