@@ -1,0 +1,1 @@
+Hotfixes for version 39.30
