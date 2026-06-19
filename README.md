@@ -32,9 +32,19 @@ The master branch is the default branch and contains the latest version of the h
 - Batch processing to handle large datasets efficiently
 - Conflict resolution for duplicate entries
 
+## Web UI & API
+
+The same Worker serves a web app and a public API on top of the stored hotfixes:
+
+- **Explorer UI** (`/`): browse every file by version, full-text search, trace a single key's value across versions, diff two versions, and view aggregate analytics.
+- **REST API** (`/api/*`): query versions, files, search, key history, diff, and stats as JSON.
+- **OpenAPI docs** (`/api/`): interactive reference for the REST API.
+
 ## Architecture
 
-- **Cloudflare Workers**: Serverless runtime for scheduled tasks
+- **Cloudflare Workers**: Serverless runtime for scheduled tasks and HTTP
+- **Vite + React**: Single-page Explorer UI served as static assets
+- **oRPC**: End-to-end type-safe API (typed RPC for the UI, REST + OpenAPI for everyone)
 - **D1 Database**: SQLite database for storing hotfix data
 - **Drizzle ORM**: Type-safe database queries and migrations
 - **Workflows**: Long-running processes using Cloudflare Durable Objects
