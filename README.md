@@ -24,6 +24,7 @@ The master branch is the default branch and contains the latest version of the h
 - [version-40.41](https://github.com/simplyzetax/habanero/tree/version-40.41)
 - [version-41.00](https://github.com/simplyzetax/habanero/tree/version-41.00)
 - [version-41.10](https://github.com/simplyzetax/habanero/tree/version-41.10)
+- [version-41.20](https://github.com/simplyzetax/habanero/tree/version-41.20)
 
 ## Features
 
